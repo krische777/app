@@ -1,5 +1,6 @@
 const Sequelize=require('sequelize');
-const sequelize=new Sequelize('postgres://postgres:secret@localhost:5432/postgres');
+const databaseURL = process.env.databaseURL || 'postgres://postgres:secret@localhost:5432/postgres'
+const sequelize=new Sequelize(databaseURL);
 const express=require('express');
 const bodyParser=require('body-parser')
 
