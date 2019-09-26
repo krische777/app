@@ -2,8 +2,6 @@ const Sequelize=require('sequelize');
 const sequelize=new Sequelize('postgres://postgres:secret@localhost:5432/postgres');
 const express=require('express');
 const bodyParser=require('body-parser')
-const {Pool}=require('pg');
-
 
 const app=express()
 const port=process.env.PORT||3000
