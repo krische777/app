@@ -1,67 +1,145 @@
-const Sequelize = require('sequelize');
-const sequelize = new Sequelize('postgres://postgres:secret@localhost:5432/postgres');
+const Sequelize=require('sequelize');
+const sequelize=new Sequelize('postgres://postgres:secret@localhost:5432/postgres');
+const express=require('express');
+const bodyParser=require('body-parser')
+const {Pool}=require('pg');
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:secret@localhost:5432/postgres'
+const pool=new Pool({
+    connectionString:process.env.DATABASE_URL,
+    ssl: true
+});
 
-const User = sequelize.define('user', {
-    // attributes
-    firstName: {
-      type: Sequelize.STRING,
-      allowNull: false
+const app=express()
+const port=process.env.PORT||3000
+app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+app.use(bodyParser.json())
+
+const User=sequelize.define('user' , {
+    email: {
+        type:Sequelize.STRING,
+        allowNULL:false,
+        unique:true
+    }
+});
+
+const Task=sequelize.define('task', {
+    userId: {
+        type:Sequelize.INTEGER,
+        allowNULL:false,
     },
-    lastName: {
-      type: Sequelize.STRING
-      // allowNull defaults to true
+    description: {
+        type: Sequelize.STRING
+    },
+    completed: {
+        type:Sequelize.BOOLEAN,
+        defaultValue:false
     }
-  }, {
-    // options
-  });
+})
 
-  const Message = sequelize.define('message', { body: Sequelize.TEXT });
+sequelize.sync()
+    .then(()=>console.log('Tables created successfully'))
+    .catch(err=> {
+        console.error('Unable to create tables, shutting down...', err);
+        process.exit(1);
+    })
 
-sequelize.sync() // Calling sync creates the table if it does not already exist
-    // Message.create() inserts a new row
-    .then(() => Message.create({ body: `This message was created at ${new Date()}` }))
-    // Message.findAll() selects all rows, and resolves with an array of objects:
-    .then(() => Message.findAll())
-    // Log the raw "dataValues" to the console.
-    .then(messagesArray => console.log("All messages: ", messagesArray.map(m => m.dataValues)))
-    .catch(err => console.error(err))
+app.post('/echo', (req, res)=>{
+    res.json(req.body)
+})
 
-    // Select all rows. Resolves with a (possibly empty) array
-User.findAll().then(...)
-// Select all rows where firstName === 'Dave', but only return the first one.
-// Resolves with an object or undefined (if no matching rows exist)
-User.findOne({where: {firstName: 'Dave'}}).then(...)
-// Select a row by its primary key. Resolves with an object or undefined (if no matching rows exist)
-User.findByPk(3).then(...)
-// A query using a numeric operator
-const Op = Sequelize.Op;
-User.findAll({
-    // WHERE height >= 175
-    where: {
-        height: {
-            [Op.gte]: 175 // gte stands for 'greater than or equal'
+app.post('/users' , (req, res, next)=> {
+    User.create(req.body)
+        .then(user=> res.json(user))
+        .catch(err=> next(err))
+})
+
+app.get('/users/:userId', (req, res, next)=>{
+    User.findByPk(req.params.userId)
+    .then(user=>{
+        if(!user) {
+            res.status(404).end()
+        } else {
+            res.json(user)
         }
-    }
-}).then(...)
+    })
+      .catch(next)
+})
 
-Person.create({
-    name: 'Rambow',
-    firstname: 'John'
-  }).then(john => {
-    console.log(john.get({
-      plain: true
-    }))
-  })
+app.get('/users/:userId/tasks/:taskId', (req, res, next)=>{
+    Task.findOne({
+        where: {
+            id:req.params.taskId,
+            userId:req.params.userId
+        }
+    })
+      .then(task=>{
+          if(task) {
+              return res.json(task)
+          }
+          return res.status(404).end()
+      })
+      .catch(next)
+})
 
-  const JobListing = sequelize.define(/* ... */);
+app.get('/users/:userId/tasks', (req, res, next) => {
+    Task.findAll({where: {userId:req.params.userId}})
+         .then(tasks=>{
+             res.json(tasks)
+         })
+         .catch(next)
+})
 
-sequelize.sync() // Create tables if necessary
-    .then(() => JobListing.truncate()) // Delete all existing rows
-    .then(() => Promise.all([ // Insert 3 new rows
-        JobListing.create({ title: 'Junior JavaScript developer at Travel company', company: 'TravelBee', yearsOfExperience: 1 }),
-        JobListing.create({ title: 'Data Scientist [m/w] at Consulting Agency', company: 'Can-O-Developers', yearsOfExperience: 4 }),
-        JobListing.create({ title: 'Web-based Game Developer Urgently Needed', company: 'Rubbery Games', yearsOfExperience: 2 })
-    ]))
- .catch(console.error)
+app.post('/users/:userId/tasks/', (req, res, next) => {
+    User.findByPk(req.params.userId)
+        .then(user=> {
+            if(!user) {
+                return res.status(404).end()
+            }
+            return Task.create({
+                ...req.body,
+                userId:req.params.userId
+            })
+            .then(task=>{
+                res.json(task)
+            })
+        })
+        .catch(next)
+})
+
+app.delete('/users/:userId/tasks/taskId/', (req, res, next)=>{
+     Task.destroy( {
+          where: {
+              id: req.params.taskId,
+              userId: req.params.userId
+          }
+     })
+         .then(destroyedItems=> {
+             if(destroyedItems) {
+             return res.status(202).end()
+             }
+             return res.status(404).end()
+         } )
+         .catch(next)
+}
+)
+
+app.delete('/users/:userId/', (req, res, next)=>{
+    User.destroy({
+        where: {id:parseInt(req.params.userId)}})
+         .then(()=> {
+             return res.status(204).end()
+         })
+         .catch(next)
+})
+
+app.put('/users/:userId', (req, res, next)=>{
+    User.findByPk(req.params.userId)
+        .then(user=>{
+            if(user) {
+                return user.update(req.body)
+                   .then(user=>res.json(user))
+            }
+            return res.status(404)
+        })
+        .catch(next)
+})
